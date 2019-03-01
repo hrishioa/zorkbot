@@ -1,0 +1,6 @@
+node_modules
+.env
+saves
+game
+frotz
+user_db.json
