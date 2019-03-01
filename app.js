@@ -20,25 +20,31 @@ const bot = new BootBot({
 zorkImages = ['./game/zork1/DATA/ZORK1.DAT','./game/zork2/DATA/ZORK2.DAT','./game/zork3/DATA/ZORK3.DAT']
 zorkSaves = ['./saves/zork1/','./saves/zork2/','./saves/zork3/']
 
-help_text = {
-  text: "To change worlds or restart the game, select 'Change world/restart'. If you're feeling stuck (which is really unusual), try 'look around', or 'hit (something) with (something). If that doesn't work either, try googling for help. I'm sure you won't find any, Zork really isn't a game where you get stuck.",
-  buttons: [
-    {
-      title: 'Help',
-      type: 'postback',
-      payload: 'HELP_PAYLOAD'
-    },
-    {
-      title: 'Change world/Restart',
-      type: 'postback',
-      payload: 'CHANGE_WORLD_PAYLOAD'
-    } 
-  ]
-}
+bot.deletePersistentMenu()
+
+help_text = [
+  "If you're feeling stuck (which is really unusual), try 'look around', or 'hit (something) with (something)'.",
+  "To change worlds or restart the game, select 'Change world/restart'.",
+  {
+    text: "If you really can't figure it out, you could hit more help, and it'll show you what I usually do. No shame. Does tend to ruin the game though.",
+    buttons: [
+      {
+        title: 'Change world/Restart',
+        type: 'postback',
+        payload: 'CHANGE_WORLD_PAYLOAD'
+      },
+      {
+        title: "More Help",
+        type: "web_url",
+        url: "http://lmgtfy.com/?s=b&q=zork+walkthrough"
+      } 
+    ]
+  }
+]
 
 bot.hear('help', (payload, chat) => {
   chat.say(welcomeMessage[0], {typing:true}).then(
-    () => chat.say(help_text))  
+    () => help_text.reduce((acc, cur) => acc.then(() => chat.say(cur, {typing: typing})), Promise.resolve()))
 })
 
 bot.on('postback:HELP_PAYLOAD', (payload, chat) => {
@@ -66,9 +72,9 @@ function addUser(payload, chat) {
 }
 
 welcomeMessage = [
-  "Welcome to Zork, an interactive text world based on the titular game from the 1980s.",
-  "Choose from three worlds to battle grues and trolls, escape from maddening rooms and find hidden treasure. An adventure awaits.",
-  "For help or to switch between worlds, type 'help'. Go explore. Be careful."
+"Welcome to Zork, an interactive text world based on the titular game from the 1980s.",
+"Choose from three worlds to battle grues and trolls, escape from maddening rooms and find hidden treasure. An adventure awaits.",
+"For help or to switch between worlds, type 'help'. To do anything, simply type what you'd like to do (keep it simple tho). Go explore. Be careful."
 ]
 
 bot.setGetStartedButton((payload, chat) => {
@@ -78,15 +84,15 @@ bot.setGetStartedButton((payload, chat) => {
     () => chat.say(welcomeMessage[2], {typing: true})).then(
     () => addUser(payload, chat)).then(
     () => selectWorld(payload, chat))
-})
+  })
 
 function selectWorld(payload, chat) {
   return chat.say({
     text: "Which world do you choose?",
     buttons: [
-      { type: 'postback', title: 'ZORK 1', payload: 'ZORK_1' },
-      { type: 'postback', title: 'ZORK 2', payload: 'ZORK_2' },
-      { type: 'postback', title: 'ZORK 3', payload: 'ZORK_3' }
+    { type: 'postback', title: 'ZORK 1', payload: 'ZORK_1' },
+    { type: 'postback', title: 'ZORK 2', payload: 'ZORK_2' },
+    { type: 'postback', title: 'ZORK 3', payload: 'ZORK_3' }
     ]
   })
 }
@@ -99,8 +105,8 @@ function setupGame(payload, chat, game) {
     chat.say({
       text: "You have an existing save. Would you like to continue or restart and overwrite the save?",
       buttons: [
-        { type: 'postback', title: 'Continue', payload: 'CONTINUE'},
-        { type: 'postback', title: 'Restart', payload: 'RESTART'}
+      { type: 'postback', title: 'Continue', payload: 'CONTINUE'},
+      { type: 'postback', title: 'Restart', payload: 'RESTART'}
       ]
     })
   } else {
@@ -131,19 +137,26 @@ bot.on('postback:RESTART', (payload, chat) => {
 })
 
 function talk(input, payload, chat, remove_starting) {
+  user = user_db.get('users').get(payload.sender.id)
+  user.set('lastMove', input).write()
   typing = user_db.get('users').get(payload.sender.id).get('typing').value()
   game = user_db.get('users').get(payload.sender.id).get('currentGame').value()
   runGame(input,game,payload.sender.id).then((game_output) => {
+    user.set('lastOutput', game_output).write()
     if(game==0 && remove_starting)
       game_output = game_output.slice(8, 15)
     if(game==1 && remove_starting)
       game_output = game_output.slice(9, 15)
     if(game==2 && remove_starting)
       game_output = game_output.slice(11, 20)
-    game_output.reduce((acc, cur) => {
+    return game_output.slice(0,-1).reduce((acc, cur) => {
       console.log("saying ",cur)
       return acc.then(() => chat.say(cur, {typing: typing}))
-    }, Promise.resolve())
+    }, Promise.resolve()).then(() => chat.say({
+        text: game_output[game_output.length-1],
+        quickReplies: ['Share', input, 'go east', 'go west', 'go north', 'go south', 'Help']
+      })
+    )
   })  
 }
 
@@ -169,9 +182,53 @@ bot.on('postback:CHANGE_WORLD_PAYLOAD', (payload, chat) => {
   selectWorld(payload, chat)
 })
 
+bot.hear('test', (payload, chat) => {
+  chat.sendTemplate({
+        "template_type":"generic",
+        "elements":[
+        {
+          "title":"Breaking News: Record Thunderstorms",
+          "subtitle":"The local area is due for record thunderstorms over the weekend.",
+          "image_url":"https://thechangreport.com/img/lightning.png",
+          "buttons": [
+          {
+            "type": "element_share",
+            "share_contents": { 
+              "attachment": {
+                "type": "template",
+                "payload": {
+                  "template_type": "generic",
+                  "elements": [
+                  {
+                    "title": "I took the hat quiz",
+                    "subtitle": "My result: Fez",
+                    "image_url": "https://bot.peters-hats.com/img/hats/fez.jpg",
+                    "default_action": {
+                      "type": "web_url",
+                      "url": "http://m.me/petershats?ref=invited_by_24601"
+                    },
+                    "buttons": [
+                    {
+                      "type": "web_url",
+                      "url": "http://m.me/petershats?ref=invited_by_24601", 
+                      "title": "Take Quiz"
+                    }
+                    ]
+                  }
+                  ]
+                }
+              }
+            }
+          }
+          ]
+        }
+        ]
+  })
+})
+
 bot.on('message', (payload, chat) => {
   console.log("Got message - ",payload.message.text);
-  if(payload.message.text.toLowerCase() != "help")
+  if(payload.message.text.toLowerCase() != "help" && payload.message.text.toLowerCase() != 'share')
     talk(payload.message.text, payload, chat)
 });
 
